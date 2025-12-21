@@ -12,6 +12,14 @@ set -euo pipefail
 LOG_DIR="logs/tokenize_extension"
 mkdir -p "${LOG_DIR}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -n "${PYTHONPATH:-}" ]]; then
+  export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
+else
+  export PYTHONPATH="${PROJECT_ROOT}"
+fi
+
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 [pipeline args...]" >&2
   exit 1

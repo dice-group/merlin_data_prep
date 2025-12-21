@@ -3,7 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BSS_DIR="${SCRIPT_DIR}/best_sentence_selection"
+CORE_DIR="$(cd "${SCRIPT_DIR}/../src" && pwd)"
+BSS_DIR="$(cd "${SCRIPT_DIR}/extras/cola/best_sentence_selection" && pwd)"
 
 NUM_RANKS=1
 NUM_PROC=1
@@ -191,7 +192,7 @@ RANK_OUTPUT_DIR="${OUTPUT_ROOT}_ranks"
 mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
 
 printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q --eval_fraction %q --eval_seed %q' \
-  "${SCRIPT_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}"
+  "${CORE_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}"
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   printf -v TOKEN_CMD '%s --language_subset %q' "${TOKEN_CMD}" "${LANGUAGE_SUBSET}"
@@ -297,7 +298,7 @@ if [[ "${RANKING_ENABLED}" -eq 1 ]]; then
 fi
 
 printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite' \
-  "${SCRIPT_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}"
+  "${CORE_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}"
 
 MERGE_JOB_ID=$(
   sbatch --parsable \

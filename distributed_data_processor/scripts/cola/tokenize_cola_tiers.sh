@@ -4,8 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PIPELINE_SCRIPT="${SCRIPT_DIR}/tokenize_and_merge_pipeline.sh"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PIPELINE_SCRIPT="${SCRIPT_DIR}/../tokenize_and_merge_pipeline.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 LANGUAGE_MAP_DIR=${LANGUAGE_MAP_DIR:-"${REPO_ROOT}/tools/two_stage_clustering"}
 
 if [[ ! -x "${PIPELINE_SCRIPT}" ]]; then

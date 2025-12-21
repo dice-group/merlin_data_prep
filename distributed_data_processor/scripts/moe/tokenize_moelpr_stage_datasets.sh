@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PIPELINE_SCRIPT="${SCRIPT_DIR}/../tokenize_and_merge_pipeline.sh"
 
 # Stage 1: languages that also exist in Belebele (no English)
 STAGE1_SHARD_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples
@@ -16,14 +18,14 @@ STAGE2_SHARD_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/shard
 STAGE2_LANGUAGES="english"
 STAGE2_TOKENIZER=meta-llama/Llama-3.2-1B
 STAGE2_OUTPUT=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/moelpr/llama-3.2-1B_tokenizer/moelpr_stage2_eng
-STAGE2_LANGUAGE_RATES_FILE="${SCRIPT_DIR}/../../configs/moelpr_stage2_language_rates.json"
+STAGE2_LANGUAGE_RATES_FILE="${BASE_DIR}/configs/moelpr_stage2_language_rates.json"
 
 NUM_PROC=4
 MERGE_WORKERS=4
 NUM_RANKS=5
 
 echo "[INFO] Tokenizing MoE-LPR Stage 1 languages: ${STAGE1_LANGUAGES}"
-bash "${SCRIPT_DIR}/tokenize_and_merge_pipeline.sh" \
+bash "${PIPELINE_SCRIPT}" \
   --shard-dir "${STAGE1_SHARD_DIR}" \
   --tokenizer "${STAGE1_TOKENIZER}" \
   --output-root "${STAGE1_OUTPUT}" \
@@ -36,7 +38,7 @@ bash "${SCRIPT_DIR}/tokenize_and_merge_pipeline.sh" \
 echo "[INFO] Tokenizing MoE-LPR Stage 2 languages: ${STAGE2_LANGUAGES}"
 LANG_RATE_FILE="${STAGE2_LANGUAGE_RATES_FILE}"
 
-bash "${SCRIPT_DIR}/tokenize_and_merge_pipeline.sh" \
+bash "${PIPELINE_SCRIPT}" \
   --shard-dir "${STAGE2_SHARD_DIR}" \
   --tokenizer "${STAGE2_TOKENIZER}" \
   --output-root "${STAGE2_OUTPUT}" \

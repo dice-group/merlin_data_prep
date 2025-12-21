@@ -9,6 +9,9 @@ fi
 INPUT_DIR="$1"
 OUTPUT_DIR="$2"
 
-python -u "$(dirname "${BASH_SOURCE[0]}")/shard_python.py" \
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CORE_DIR="$(cd "${SCRIPT_DIR}/../../src" && pwd)"
+
+python -u "${CORE_DIR}/shard_python.py" \
   --input "${INPUT_DIR}" \
   --output "${OUTPUT_DIR}"
