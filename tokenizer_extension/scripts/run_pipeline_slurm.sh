@@ -13,7 +13,7 @@ LOG_DIR="logs/tokenize_extension"
 mkdir -p "${LOG_DIR}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 if [[ -n "${PYTHONPATH:-}" ]]; then
   export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
 else

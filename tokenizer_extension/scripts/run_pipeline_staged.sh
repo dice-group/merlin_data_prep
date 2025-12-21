@@ -10,7 +10,7 @@ fi
 
 PARTITION=${PARTITION:-normal}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(realpath "${SCRIPT_DIR}/..")"
+PROJECT_ROOT="$(realpath "${SCRIPT_DIR}/../..")"
 BASE_PYTHONPATH="${PYTHONPATH:-}"
 if [[ -n "$BASE_PYTHONPATH" ]]; then
   COMBINED_PYTHONPATH="${PROJECT_ROOT}:${BASE_PYTHONPATH}"

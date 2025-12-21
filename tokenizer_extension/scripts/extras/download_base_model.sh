@@ -6,7 +6,7 @@ set -euo pipefail
 
 MODEL_ID="meta-llama/Llama-3.1-8B"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TARGET_DIR="${ROOT_DIR}/.models/llama-3.1-8b"
 
 mkdir -p "${TARGET_DIR}"
