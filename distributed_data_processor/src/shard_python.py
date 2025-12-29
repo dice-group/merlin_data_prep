@@ -62,7 +62,7 @@ def main():
     print(f"[INFO] Found {len(files)} files")
     start = time.time()
 
-    with Pool(cpu_count()) as p:
+    with Pool(min(cpu_count(), 16)) as p:
         for _ in p.imap_unordered(
             process_file, [(f, src, args.output) for f in files]
         ):
