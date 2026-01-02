@@ -231,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--languages", nargs="+", default=None, help="Optional list of language directory names (e.g., eng_Latn deu_Latn).")
     parser.add_argument("--language_subset", type=str, default=None, help="Name of a language list defined in language_subsets.py (e.g., twenty_two_representatives_mediods).")
     parser.add_argument("--world_size", type=int, default=None, help="World size override (defaults to SLURM env vars).")
-    parser.add_argument("--eval_fraction", type=float, default=0.05, help="Fraction per language to tag as validation data (set 0 to disable).")
+    parser.add_argument("--eval_fraction", type=float, default=0.02, help="Fraction per language to tag as validation data (set 0 to disable).")
     parser.add_argument("--eval_seed", type=int, default=42, help="Seed for the eval split hash.")
     parser.add_argument("--keep_text", action="store_true", help="Keep the raw text column in the tokenized dataset.")
     parser.add_argument("--sample_fraction", type=float, default=1.0, help="Default probability of keeping an example.")
