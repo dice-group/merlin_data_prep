@@ -4,3 +4,4 @@ __pycache__/
 *.pyd
 *.log
 *logs*/
+distributed_data_processor/scripts/.model

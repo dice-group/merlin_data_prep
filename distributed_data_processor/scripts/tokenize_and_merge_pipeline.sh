@@ -14,9 +14,6 @@ TIME_LIMIT=02:00:00
 MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
-MERGE_SPLIT_FRACTION=0.05
-MERGE_SPLIT_SEED=42
-MERGE_WORKERS=""
 JOB_PREFIX="tok"
 EVAL_FRACTION=0.02
 EVAL_SEED=42
@@ -51,14 +48,11 @@ Key options:
   --num-ranks INT           SLURM array size (overrides subset defaults below).
   --num-proc INT            Workers passed to tokenize_slurm.py --num_proc.
   --cpus-per-task INT       CPUs per tokenization task.
-  --merge-workers INT       Worker count for merge_tokenized_ranks.py.
   --eval-fraction FLOAT     Fraction per language for validation tagging during tokenization (default: ${EVAL_FRACTION}).
   --eval-seed INT           Seed for eval hashing (default: ${EVAL_SEED}).
   --sample-fraction FLOAT   Probability of keeping each record globally (default: ${SAMPLE_FRACTION}).
   --sample-seed INT         Seed used for the sampling hash (default: ${SAMPLE_SEED}).
   --language-rates PATH     JSON mapping of language->keep_rate overriding the global sample fraction.
-  --merge-split-fraction FLOAT  Fraction to reserve for validation when saving merged dataset (default: ${MERGE_SPLIT_FRACTION}).
-  --merge-split-seed INT    Seed used if merge performs fallback split (default: ${MERGE_SPLIT_SEED}).
   --enable-ranking          Run word/subword counting + joint-score computation before merge.
   --rank-alpha FLOAT        Weight for local popularity Rl (default: ${RANK_ALPHA}).
   --rank-beta FLOAT         Weight for global importance Rg (default: ${RANK_BETA}).
@@ -101,15 +95,12 @@ while [[ $# -gt 0 ]]; do
     --merge-cpus) MERGE_CPUS="$2"; shift 2 ;;
     --merge-mem) MERGE_MEM="$2"; shift 2 ;;
     --merge-time) MERGE_TIME="$2"; shift 2 ;;
-    --merge-workers) MERGE_WORKERS="$2"; shift 2 ;;
     --job-prefix) JOB_PREFIX="$2"; shift 2 ;;
     --eval-fraction) EVAL_FRACTION="$2"; shift 2 ;;
     --eval-seed) EVAL_SEED="$2"; shift 2 ;;
     --sample-fraction) SAMPLE_FRACTION="$2"; shift 2 ;;
     --sample-seed) SAMPLE_SEED="$2"; shift 2 ;;
     --language-rates) LANGUAGE_RATES_FILE="$2"; shift 2 ;;
-    --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
-    --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
     --max-samples) MAX_SAMPLES="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
     --enable-ranking) RANKING_ENABLED=1; shift ;;
@@ -202,7 +193,6 @@ if [[ "${NUM_RANKS}" -lt 1 ]]; then
   exit 1
 fi
 
-MERGE_WORKERS="${MERGE_WORKERS:-${MERGE_CPUS}}"
 if [[ -n "${LANGUAGE_MAP}" && ! -f "${LANGUAGE_MAP}" ]]; then
   echo "[ERROR] language map ${LANGUAGE_MAP} not found." >&2
   exit 1
@@ -324,8 +314,8 @@ if [[ "${RANKING_ENABLED}" -eq 1 ]]; then
   MERGE_DEPENDENCY="${RANK_JOB_ID}"
 fi
 
-printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite --workers %q --split_fraction %q --split_seed %q' \
-  "${CORE_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}" "${MERGE_WORKERS}" "${MERGE_SPLIT_FRACTION}" "${MERGE_SPLIT_SEED}"
+printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite' \
+  "${CORE_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}"
 
 MERGE_JOB_ID=$(
   sbatch --parsable \
