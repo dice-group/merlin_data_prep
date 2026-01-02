@@ -11,6 +11,7 @@ if [[ ! -x "${PIPELINE_SCRIPT}" ]]; then
 fi
 
 NUM_RANKS=1
+USER_NUM_RANKS=""
 NUM_PROC=1
 CPUS_PER_TASK=4
 MEM_PER_TASK=32G
@@ -18,7 +19,7 @@ TIME_LIMIT=02:00:00
 MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
-TRANSFORMERS_OFFLINE=1
+TRANSFORMERS_OFFLINE=0
 EVAL_FRACTION=0.02
 EVAL_SEED=42
 ENABLE_RANKING=0
@@ -36,6 +37,7 @@ TOPK_MIN_LANGUAGE_SIZE=30000
 TOPK_CPUS=8
 TOPK_MEM=64G
 TOPK_TIME=02:00:00
+LANGUAGE_RATES_DIR="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates"
 
 usage() {
   cat <<EOF
@@ -85,7 +87,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --shard-dir) SHARD_DIR="$2"; shift 2 ;;
     --output-base) OUTPUT_BASE="$2"; shift 2 ;;
-    --num-ranks) NUM_RANKS="$2"; shift 2 ;;
+    --num-ranks) NUM_RANKS="$2"; USER_NUM_RANKS="$2"; shift 2 ;;
     --num-proc) NUM_PROC="$2"; shift 2 ;;
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
     --mem) MEM_PER_TASK="$2"; shift 2 ;;
@@ -123,41 +125,56 @@ if [[ -z "${SHARD_DIR}" || -z "${OUTPUT_BASE}" ]]; then
   exit 1
 fi
 
+LOCAL_MODEL_DIR="/scratch/hpc-prf-merlin/joel/moe-study/data_prep/merlin_data_prep/distributed_data_processor/scripts/.model"
 TOKENIZERS=(
-  "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
-  #"llama-3.2-1B_tokenizer|meta-llama/Llama-3.2-1B"
-  #"llama-3.2-3B_tokenizer|meta-llama/Llama-3.2-3B"
+  "llama-3.1-8B_tokenizer|${LOCAL_MODEL_DIR}/meta-llama_Llama-3.1-8B"
+  "llama-3.2-1B_tokenizer|${LOCAL_MODEL_DIR}/meta-llama_Llama-3.2-1B"
+  "llama-3.2-3B_tokenizer|${LOCAL_MODEL_DIR}/meta-llama_Llama-3.2-3B"
 )
 
+L2V_SUBSET_DIR="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fineweb2_metadata/l2v_nested_samples"
 SUBSETS=(
-  # "5_langs|five_representatives_mediods"
-  # "10_langs|ten_representatives_mediods"
-  # "22_langs|twenty_two_representatives_mediods"
-  # "46_langs|fourty_six_representatives_mediods"
-  # "95_langs|ninty_five_representatives_mediods"
-  # "199_langs|hundred_ninty_nine_representatives_mediods"
-  "lang2vec_auto_12_langs|lang2vec_auto_best_languages"
-  # "eng_plus_5_langs|english_plus_five"
-  # "eng_plus_10_langs|english_plus_ten"
-  # "eng_plus_22_langs|english_plus_twenty_two"
-  # "eng_plus_46_langs|english_plus_forty_six"
-  # "eng_plus_95_langs|english_plus_ninety_five"
-  # "eng_plus_199_langs|english_plus_hundred_ninety_nine"
+  "5_langs|${L2V_SUBSET_DIR}/5.csv"
+  "10_langs|${L2V_SUBSET_DIR}/10.csv"
+  "22_langs|${L2V_SUBSET_DIR}/22.csv"
+  "46_langs|${L2V_SUBSET_DIR}/46.csv"
+  "96_langs|${L2V_SUBSET_DIR}/96.csv"
+  "200_langs|${L2V_SUBSET_DIR}/200.csv"
 )
 
 for tok_entry in "${TOKENIZERS[@]}"; do
   IFS='|' read -r tok_dir tok_name <<<"${tok_entry}"
   for subset_entry in "${SUBSETS[@]}"; do
     IFS='|' read -r subset_dir subset_flag <<<"${subset_entry}"
+    run_num_ranks="${NUM_RANKS}"
+    if [[ -z "${USER_NUM_RANKS}" ]]; then
+      case "${subset_dir}" in
+        5_langs) run_num_ranks=5 ;;
+        10_langs) run_num_ranks=10 ;;
+        22_langs) run_num_ranks=22 ;;
+        46_langs) run_num_ranks=46 ;;
+        96_langs) run_num_ranks=96 ;;
+        200_langs) run_num_ranks=200 ;;
+      esac
+    fi
     output_dir="${OUTPUT_BASE}/${tok_dir}/${subset_dir}"
     job_prefix="${JOB_PREFIX_BASE}_${tok_dir}_${subset_dir}"
     echo "Submitting ${tok_name} / ${subset_flag} -> ${output_dir}"
+    languages_arg=()
+    if [[ "${subset_flag}" == *.csv && -f "${subset_flag}" ]]; then
+      lang_list=$(awk -F',' 'NR>1 {print $2}' "${subset_flag}" | sort -u | tr '\n' ' ')
+      lang_list="${lang_list} english"
+      lang_list=$(printf "%s\n" ${lang_list} | sort -u | tr '\n' ' ')
+      if [[ -n "${lang_list}" ]]; then
+        languages_arg=(--languages "${lang_list}")
+      fi
+    fi
+
     pipeline_cmd=(
       "${PIPELINE_SCRIPT}"
       --shard-dir "${SHARD_DIR}"
       --tokenizer "${tok_name}"
-      --language-subset "${subset_flag}"
-      --num-ranks "${NUM_RANKS}"
+      --num-ranks "${run_num_ranks}"
       --num-proc "${NUM_PROC}"
       --cpus-per-task "${CPUS_PER_TASK}"
       --mem "${MEM_PER_TASK}"
@@ -170,6 +187,19 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --job-prefix "${job_prefix}"
       --output-root "${output_dir}"
     )
+
+    if [[ "${#languages_arg[@]}" -gt 0 ]]; then
+      pipeline_cmd+=("${languages_arg[@]}")
+    else
+      pipeline_cmd+=(--language-subset "${subset_flag}")
+    fi
+
+    rate_file="${LANGUAGE_RATES_DIR}/${tok_dir}/${subset_dir}.json"
+    if [[ -f "${rate_file}" ]]; then
+      pipeline_cmd+=(--language-rates "${rate_file}")
+    else
+      echo "[warn] No language rates file: ${rate_file} (using full data)"
+    fi
 
     if [[ "${ENABLE_RANKING}" -eq 1 ]]; then
       pipeline_cmd+=(
@@ -196,6 +226,6 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       )
     fi
 
-    TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE}" "${pipeline_cmd[@]}"
+    TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE}" HF_HUB_OFFLINE=0 HF_DATASETS_OFFLINE=0 "${pipeline_cmd[@]}"
   done
 done
