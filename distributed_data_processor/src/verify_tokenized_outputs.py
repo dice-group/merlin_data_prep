@@ -14,7 +14,7 @@ Scan the tokenized output tree, load each Hugging Face dataset, and dump basic s
 TODO: this can be paralellized to get exact stat quickly, but ig estimating should be enough and is simplest, but extend if necessary with more stats
 """
 
-DEFAULT_OUTPUT_BASE = Path("/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter")
+DEFAULT_OUTPUT_BASE = Path("/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison/")
 DEFAULT_REPORT_PATH = Path("dataset_stats.md")
 DEFAULT_MAX_TOKEN_SAMPLES = 1000  # 0 = use whole dataset, otherwise sample this many rows to estimate tokens
 DEFAULT_VERBOSE = True
