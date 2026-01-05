@@ -5,12 +5,92 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from datasets import Dataset
 from transformers import AutoTokenizer
 
 from language_subsets import LANGUAGE_SUBSET_MAP
+from validation import ValidationError, verify_tokenized_dataset
+
+LANGUAGE_PAD_ID = -1
+
+
+def load_language_map(spec: Optional[str]) -> Optional[Dict[str, str]]:
+    if spec is None:
+        return None
+
+    path = Path(spec)
+    try:
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        else:
+            data = json.loads(spec)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Failed to parse language_map '{spec}': {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("language_map must decode to a dict mapping language -> family.")
+
+    normalized: Dict[str, str] = {}
+    if all(isinstance(value, str) or value is None for value in data.values()):
+        for lang, family in data.items():
+            if lang is None or family is None:
+                continue
+            normalized[str(lang)] = str(family)
+        return normalized if normalized else None
+
+    flattened = _flatten_groupings_payload(data)
+    if flattened:
+        return flattened
+
+    raise ValueError("language_map must decode to language->family or groupings JSON.")
+
+
+def _flatten_groupings_payload(payload: Dict[str, Any]) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+    for group_id, entry in payload.items():
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("group") or group_id)
+        languages = set(entry.get("languages") or entry.get("language") or [])
+        subgroups = entry.get("subgroups") or {}
+        if isinstance(subgroups, dict):
+            for members in subgroups.values():
+                if isinstance(members, list):
+                    languages.update(members)
+        metadata = entry.get("metadata") or {}
+        if isinstance(metadata, dict):
+            languages.update(metadata.keys())
+        for lang in languages:
+            lang_key = str(lang)
+            normalized.setdefault(lang_key, label)
+    return normalized
+
+
+def build_language_vocab(language_map: Dict[str, str]) -> Tuple[Dict[str, int], Dict[str, int]]:
+    languages = sorted(language_map.keys())
+    families = sorted(set(language_map.values()))
+    language_vocab = {lang: idx for idx, lang in enumerate(languages)}
+    family_vocab = {fam: idx for idx, fam in enumerate(families)}
+    return language_vocab, family_vocab
+
+
+def language_to_ids(
+    language_value: Optional[str],
+    language_map: Dict[str, str],
+    language_vocab: Dict[str, int],
+    family_vocab: Dict[str, int],
+) -> Tuple[int, int]:
+    if language_value is None:
+        return LANGUAGE_PAD_ID, LANGUAGE_PAD_ID
+
+    lang = str(language_value)
+    lang_id = language_vocab.get(lang, LANGUAGE_PAD_ID)
+    family = language_map.get(lang)
+    family_id = family_vocab.get(family, LANGUAGE_PAD_ID) if family is not None else LANGUAGE_PAD_ID
+    return lang_id, family_id
 
 
 def _resolve_rank_world(rank: Optional[int], world_size: Optional[int]) -> tuple[int, int]:
@@ -122,9 +202,45 @@ def _extract_text(line: str) -> Optional[str]:
     return stripped
 
 
-def tokenize_fn(batch, tokenizer, keep_text: bool):
+LanguageMetadata = Optional[Tuple[Dict[str, str], Dict[str, int], Dict[str, int]]]
+
+
+def _resolve_language_metadata(language_map_spec: Optional[str]) -> LanguageMetadata:
+    if language_map_spec is None:
+        return None
+    language_map = load_language_map(language_map_spec)
+    if language_map is None:
+        raise RuntimeError(f"language_map {language_map_spec} contains no languages.")
+    language_vocab, family_vocab = build_language_vocab(language_map)
+    return language_map, language_vocab, family_vocab
+
+
+def _language_id_columns(
+    languages: List[Optional[str]], language_metadata: LanguageMetadata
+) -> Tuple[List[int], List[int]]:
+    length = len(languages)
+    pad = LANGUAGE_PAD_ID
+    if language_metadata is None:
+        return [pad] * length, [pad] * length
+    language_map, language_vocab, family_vocab = language_metadata
+    language_ids: List[int] = []
+    family_ids: List[int] = []
+    for language in languages:
+        lang_id, fam_id = language_to_ids(language, language_map, language_vocab, family_vocab)
+        language_ids.append(lang_id)
+        family_ids.append(fam_id)
+    return language_ids, family_ids
+
+
+def tokenize_fn(batch, tokenizer, keep_text: bool, language_metadata: LanguageMetadata):
     tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=1024)
     tokenized["labels"] = tokenized["input_ids"].copy()
+    languages = batch.get("language")
+    if languages is None:
+        languages = [None] * len(batch["text"])
+    language_ids, family_ids = _language_id_columns(languages, language_metadata)
+    tokenized["language_ids"] = language_ids
+    tokenized["family_ids"] = family_ids
     if keep_text:
         tokenized["text"] = batch["text"]
     return tokenized
@@ -191,6 +307,8 @@ def main(args):
     if not assigned:
         raise RuntimeError(f"Rank {rank} received zero shard files. Check shard count vs. world size.")
 
+    language_metadata = _resolve_language_metadata(getattr(args, "language_map", None))
+
     with tempfile.TemporaryDirectory(prefix="tok_simple_") as cache_dir:
         raw_dataset = Dataset.from_generator(
             lambda: _iter_shard_lines(
@@ -207,11 +325,19 @@ def main(args):
         keep_text = bool(args.keep_text)
         remove_columns = None if keep_text else ["text"]
         tokenized_dataset = raw_dataset.map(
-            lambda batch: tokenize_fn(batch, tokenizer, keep_text),
+            lambda batch: tokenize_fn(batch, tokenizer, keep_text, language_metadata),
             batched=True,
             remove_columns=remove_columns,
             num_proc=args.num_proc,
         )
+
+        try:
+            verify_tokenized_dataset(
+                tokenized_dataset,
+                require_language_metadata=language_metadata is not None,
+            )
+        except ValidationError as exc:
+            raise RuntimeError("Tokenized dataset validation failed") from exc
 
         output_dir = Path(args.save_tokenized_data_dir)
         if world_size > 1:
@@ -238,5 +364,6 @@ if __name__ == "__main__":
     parser.add_argument("--sample_seed", type=int, default=0, help="Seed controlling deterministic sampling.")
     parser.add_argument("--language_rates_json", type=str, default=None, help="Optional JSON file mapping language -> keep_rate override.")
     parser.add_argument("--max_samples", type=int, default=None, help="Optional max number of records to emit per rank.")
+    parser.add_argument("--language-map", type=str, default=None, help="Optional path or JSON string mapping languages to families.")
     args = parser.parse_args()
     main(args)

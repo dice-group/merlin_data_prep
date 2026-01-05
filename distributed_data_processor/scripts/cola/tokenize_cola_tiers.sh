@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Launch tokenization + merge jobs for the CoLA Tier-12 and Tier-72 corpora
-# with both the original Llama-3.1-8B tokenizer and the tier-specific extended tokenizers.
+# Launch tokenization + merge jobs for the CoLA Tier-200 corpus
+# with both the original Llama-3.1-8B tokenizer and the tier-specific extended tokenizer.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,19 +14,20 @@ if [[ ! -x "${PIPELINE_SCRIPT}" ]]; then
 fi
 
 # Paths to the language-sharded samples for each tier.
-COLA_TIER1_SAMPLE_DIR=${COLA_TIER1_SAMPLE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_12_tier_samples/sharded_samples}
-COLA_TIER2_SAMPLE_DIR=${COLA_TIER2_SAMPLE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_72_tier_samples/sharded_samples}
+# COLA_TIER1_SAMPLE_DIR=${COLA_TIER1_SAMPLE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_12_tier_samples/sharded_samples}
+# COLA_TIER2_SAMPLE_DIR=${COLA_TIER2_SAMPLE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_72_tier_samples/sharded_samples}
 COLA_TIER3_SAMPLE_DIR=${COLA_TIER3_SAMPLE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_200_tier_samples/sharded_samples}
 
 # Tokenizer identifiers.
 BASE_TOKENIZER_NAME=${BASE_TOKENIZER_NAME:-meta-llama/Llama-3.1-8B}
 BASE_TOKENIZER_SLUG=${BASE_TOKENIZER_SLUG:-llama-3.1-8B_tokenizer}
-COLA_TIER1_EXT_TOKENIZER=${COLA_TIER1_EXT_TOKENIZER:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/extended_tokenizer}
-COLA_TIER2_EXT_TOKENIZER=${COLA_TIER2_EXT_TOKENIZER:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/extended_tokenizer}
-COLA_TIER3_EXT_TOKENIZER=${COLA_TIER3_EXT_TOKENIZER:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/extended_tokenizer}
+# COLA_TIER1_EXT_TOKENIZER=${COLA_TIER1_EXT_TOKENIZER:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/extended_tokenizer}
+# COLA_TIER2_EXT_TOKENIZER=${COLA_TIER2_EXT_TOKENIZER:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/extended_tokenizer}
+# Keep empty by default to avoid set -u errors when RUN_EXT_TOKENIZER=false.
+COLA_TIER3_EXT_TOKENIZER=${COLA_TIER3_EXT_TOKENIZER:-}
 
 # Where to write the merged HF datasets (the pipeline also writes *_ranks/ siblings).
-OUTPUT_BASE=${OUTPUT_BASE:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
+OUTPUT_BASE=${OUTPUT_BASE:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized_fully_200}
 
 # Resource knobs shared across runs (override via env vars if needed).
 DEFAULT_NUM_PROC=${NUM_PROC:-4}
@@ -41,45 +42,44 @@ EVAL_SEED=${EVAL_SEED:-42}
 JOB_PREFIX_BASE=${JOB_PREFIX_BASE:-cola_tier_tok}
 
 # Tier-specific parallelism defaults (override with COLA_TIER{1,2,3}_NUM_RANKS).
-COLA_TIER1_NUM_RANKS=${COLA_TIER1_NUM_RANKS:-12}
-COLA_TIER2_NUM_RANKS=${COLA_TIER2_NUM_RANKS:-72}
+# COLA_TIER1_NUM_RANKS=${COLA_TIER1_NUM_RANKS:-12}
+# COLA_TIER2_NUM_RANKS=${COLA_TIER2_NUM_RANKS:-72}
 COLA_TIER3_NUM_RANKS=${COLA_TIER3_NUM_RANKS:-200}
-COLA_TIER1_NUM_PROC=${COLA_TIER1_NUM_PROC:-${DEFAULT_NUM_PROC}}
-COLA_TIER2_NUM_PROC=${COLA_TIER2_NUM_PROC:-${DEFAULT_NUM_PROC}}
+# COLA_TIER1_NUM_PROC=${COLA_TIER1_NUM_PROC:-${DEFAULT_NUM_PROC}}
+# COLA_TIER2_NUM_PROC=${COLA_TIER2_NUM_PROC:-${DEFAULT_NUM_PROC}}
 COLA_TIER3_NUM_PROC=${COLA_TIER3_NUM_PROC:-${DEFAULT_NUM_PROC}}
 
 declare -A TIER_SAMPLE_DIRS=(
-  ["cola_tier1"]="${COLA_TIER1_SAMPLE_DIR}"
-  ["cola_tier2"]="${COLA_TIER2_SAMPLE_DIR}"
+  # ["cola_tier1"]="${COLA_TIER1_SAMPLE_DIR}"
+  # ["cola_tier2"]="${COLA_TIER2_SAMPLE_DIR}"
   ["cola_tier3"]="${COLA_TIER3_SAMPLE_DIR}"
 )
 declare -A TIER_NUM_RANKS=(
-  ["cola_tier1"]="${COLA_TIER1_NUM_RANKS}"
-  ["cola_tier2"]="${COLA_TIER2_NUM_RANKS}"
+  # ["cola_tier1"]="${COLA_TIER1_NUM_RANKS}"
+  # ["cola_tier2"]="${COLA_TIER2_NUM_RANKS}"
   ["cola_tier3"]="${COLA_TIER3_NUM_RANKS}"
 )
 declare -A TIER_EXT_TOKENIZERS=(
-  ["cola_tier1"]="${COLA_TIER1_EXT_TOKENIZER}"
-  ["cola_tier2"]="${COLA_TIER2_EXT_TOKENIZER}"
+  # ["cola_tier1"]="${COLA_TIER1_EXT_TOKENIZER}"
+  # ["cola_tier2"]="${COLA_TIER2_EXT_TOKENIZER}"
   ["cola_tier3"]="${COLA_TIER3_EXT_TOKENIZER}"
 )
 declare -A TIER_EXT_SLUGS=(
-  ["cola_tier1"]="cola_tier1_extended_tokenizer"
-  ["cola_tier2"]="cola_tier2_extended_tokenizer"
+  # ["cola_tier1"]="cola_tier1_extended_tokenizer"
+  # ["cola_tier2"]="cola_tier2_extended_tokenizer"
   ["cola_tier3"]="cola_tier3_extended_tokenizer"
 )
 declare -A TIER_NUM_PROC=(
-  ["cola_tier1"]="${COLA_TIER1_NUM_PROC}"
-  ["cola_tier2"]="${COLA_TIER2_NUM_PROC}"
+  # ["cola_tier1"]="${COLA_TIER1_NUM_PROC}"
+  # ["cola_tier2"]="${COLA_TIER2_NUM_PROC}"
   ["cola_tier3"]="${COLA_TIER3_NUM_PROC}"
 )
 declare -A TIER_LANGUAGE_MAPS=(
-  ["cola_tier1"]="${LANGUAGE_MAP_DIR}/12_tier_language_groupings.json"
-  ["cola_tier2"]="${LANGUAGE_MAP_DIR}/72_tier_language_groupings.json"
-  ["cola_tier3"]="${LANGUAGE_MAP_DIR}/200_tier_language_groupings.json"
+  # ["cola_tier1"]="${LANGUAGE_MAP_DIR}/12_tier_language_groupings.json"
+  # ["cola_tier2"]="${LANGUAGE_MAP_DIR}/72_tier_language_groupings.json"
+  ["cola_tier3"]="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/tools/two_stage_clustering/200_tier_language_groupings.json"
 )
-#declare -a TIER_ORDER=("cola_tier1" "cola_tier2" "cola_tier3")
-declare -a TIER_ORDER=("cola_tier1")
+declare -a TIER_ORDER=("cola_tier3")
 
 submit_pipeline() {
   local shard_dir=$1
@@ -135,15 +135,17 @@ for tier in "${TIER_ORDER[@]}"; do
   base_job="${JOB_PREFIX_BASE}_${tier}_orig"
   submit_pipeline "${shard_dir}" "${BASE_TOKENIZER_NAME}" "${base_output}" "${base_job}" "${num_ranks}" "${num_proc}" "${language_map}"
 
-  ext_tokenizer="${TIER_EXT_TOKENIZERS[${tier}]}"
-  if [[ ! -d "${ext_tokenizer}" ]]; then
-    echo "[ERROR] Extended tokenizer directory ${ext_tokenizer} missing for ${tier}" >&2
-    exit 1
+  if [[ "${RUN_EXT_TOKENIZER}" == "true" ]]; then
+    ext_tokenizer="${TIER_EXT_TOKENIZERS[${tier}]}"
+    if [[ ! -d "${ext_tokenizer}" ]]; then
+      echo "[ERROR] Extended tokenizer directory ${ext_tokenizer} missing for ${tier}" >&2
+      exit 1
+    fi
+    ext_slug="${TIER_EXT_SLUGS[${tier}]}"
+    ext_output="${OUTPUT_BASE}/${ext_slug}"
+    ext_job="${JOB_PREFIX_BASE}_${tier}_extended"
+    submit_pipeline "${shard_dir}" "${ext_tokenizer}" "${ext_output}" "${ext_job}" "${num_ranks}" "${num_proc}" "${language_map}"
   fi
-  ext_slug="${TIER_EXT_SLUGS[${tier}]}"
-  ext_output="${OUTPUT_BASE}/${ext_slug}"
-  ext_job="${JOB_PREFIX_BASE}_${tier}_extended"
-  submit_pipeline "${shard_dir}" "${ext_tokenizer}" "${ext_output}" "${ext_job}" "${num_ranks}" "${num_proc}" "${language_map}"
 done
 
 echo "[INFO] Submitted CoLA tier tokenization jobs for both original and extended tokenizers."
