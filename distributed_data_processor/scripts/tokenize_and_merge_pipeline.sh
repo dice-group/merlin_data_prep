@@ -11,6 +11,7 @@ NUM_PROC=1
 CPUS_PER_TASK=4
 MEM_PER_TASK=32G
 TIME_LIMIT=02:00:00
+MAX_LENGTH=1024
 MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
@@ -52,6 +53,7 @@ Key options:
   --eval-seed INT           Seed for eval hashing (default: ${EVAL_SEED}).
   --sample-fraction FLOAT   Probability of keeping each record globally (default: ${SAMPLE_FRACTION}).
   --sample-seed INT         Seed used for the sampling hash (default: ${SAMPLE_SEED}).
+  --max-length INT          Maximum sequence length for tokenization (default: ${MAX_LENGTH}).
   --language-rates PATH     JSON mapping of language->keep_rate overriding the global sample fraction.
   --enable-ranking          Run word/subword counting + joint-score computation before merge.
   --rank-alpha FLOAT        Weight for local popularity Rl (default: ${RANK_ALPHA}).
@@ -100,6 +102,7 @@ while [[ $# -gt 0 ]]; do
     --eval-seed) EVAL_SEED="$2"; shift 2 ;;
     --sample-fraction) SAMPLE_FRACTION="$2"; shift 2 ;;
     --sample-seed) SAMPLE_SEED="$2"; shift 2 ;;
+    --max-length) MAX_LENGTH="$2"; shift 2 ;;
     --language-rates) LANGUAGE_RATES_FILE="$2"; shift 2 ;;
     --max-samples) MAX_SAMPLES="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
@@ -202,8 +205,8 @@ LOG_ROOT="${LOG_ROOT:-logs/${JOB_PREFIX}}"
 RANK_OUTPUT_DIR="${OUTPUT_ROOT}_ranks"
 mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
 
-printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q --eval_fraction %q --eval_seed %q --sample_fraction %q --sample_seed %q' \
-  "${CORE_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}" "${SAMPLE_FRACTION}" "${SAMPLE_SEED}"
+printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q --eval_fraction %q --eval_seed %q --sample_fraction %q --sample_seed %q --max_length %q' \
+  "${CORE_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}" "${SAMPLE_FRACTION}" "${SAMPLE_SEED}" "${MAX_LENGTH}"
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   printf -v TOKEN_CMD '%s --language_subset %q' "${TOKEN_CMD}" "${LANGUAGE_SUBSET}"

@@ -232,8 +232,8 @@ def _language_id_columns(
     return language_ids, family_ids
 
 
-def tokenize_fn(batch, tokenizer, keep_text: bool, language_metadata: LanguageMetadata):
-    tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=1024)
+def tokenize_fn(batch, tokenizer, keep_text: bool, language_metadata: LanguageMetadata, max_length: int):
+    tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=max_length)
     tokenized["labels"] = tokenized["input_ids"].copy()
     languages = batch.get("language")
     if languages is None:
@@ -325,7 +325,7 @@ def main(args):
         keep_text = bool(args.keep_text)
         remove_columns = None if keep_text else ["text"]
         tokenized_dataset = raw_dataset.map(
-            lambda batch: tokenize_fn(batch, tokenizer, keep_text, language_metadata),
+            lambda batch: tokenize_fn(batch, tokenizer, keep_text, language_metadata, args.max_length),
             batched=True,
             remove_columns=remove_columns,
             num_proc=args.num_proc,
@@ -364,6 +364,7 @@ if __name__ == "__main__":
     parser.add_argument("--sample_seed", type=int, default=0, help="Seed controlling deterministic sampling.")
     parser.add_argument("--language_rates_json", type=str, default=None, help="Optional JSON file mapping language -> keep_rate override.")
     parser.add_argument("--max_samples", type=int, default=None, help="Optional max number of records to emit per rank.")
+    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length for tokenization.")
     parser.add_argument("--language-map", type=str, default=None, help="Optional path or JSON string mapping languages to families.")
     args = parser.parse_args()
     main(args)

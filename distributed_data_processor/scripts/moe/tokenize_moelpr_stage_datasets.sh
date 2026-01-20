@@ -33,6 +33,7 @@ NUM_PROC=${NUM_PROC:-4}
 CPUS_PER_TASK=${CPUS_PER_TASK:-4}
 MEM_PER_TASK=${MEM_PER_TASK:-32G}
 TIME_LIMIT=${TIME_LIMIT:-04:00:00}
+MAX_LENGTH=${MAX_LENGTH:-512}
 EVAL_FRACTION=${EVAL_FRACTION:-0.02}
 EVAL_SEED=${EVAL_SEED:-42}
 
@@ -89,6 +90,7 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --cpus-per-task "${CPUS_PER_TASK}"
       --mem "${MEM_PER_TASK}"
       --time "${TIME_LIMIT}"
+      --max-length "${MAX_LENGTH}"
       --eval-fraction "${EVAL_FRACTION}"
       --eval-seed "${EVAL_SEED}"
     )
@@ -116,6 +118,7 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --cpus-per-task "${CPUS_PER_TASK}" \
       --mem "${MEM_PER_TASK}" \
       --time "${TIME_LIMIT}" \
+      --max-length "${MAX_LENGTH}" \
       --eval-fraction "${EVAL_FRACTION}" \
       --eval-seed "${EVAL_SEED}" \
       --language-rates "${STAGE2_LANGUAGE_RATES_FILE}"
