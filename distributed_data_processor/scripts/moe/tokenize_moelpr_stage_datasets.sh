@@ -5,12 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-MAIN_REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 PIPELINE_SCRIPT="${SCRIPT_DIR}/../tokenize_and_merge_pipeline.sh"
 
 SHARD_DIR=${SHARD_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/sharded_samples}
 L2V_SUBSET_DIR=${L2V_SUBSET_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fineweb2_metadata/l2v_nested_samples}
-LANGUAGE_RATES_DIR=${LANGUAGE_RATES_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates}
+LANGUAGE_RATES_DIR=${LANGUAGE_RATES_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates/moelpr}
 OUTPUT_BASE=${OUTPUT_BASE:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison/moelpr}
 
 LOCAL_MODEL_DIR=${LOCAL_MODEL_DIR:-/scratch/hpc-prf-merlin/joel/moe-study/data_prep/merlin_data_prep/distributed_data_processor/scripts/.model}
@@ -21,10 +20,7 @@ TOKENIZERS=(
 )
 
 SUBSETS=(
-  "5_langs|${L2V_SUBSET_DIR}/5.csv|5"
   "10_langs|${L2V_SUBSET_DIR}/10.csv|10"
-  "22_langs|${L2V_SUBSET_DIR}/22.csv|22"
-  "46_langs|${L2V_SUBSET_DIR}/46.csv|46"
   "96_langs|${L2V_SUBSET_DIR}/96.csv|96"
   "200_langs|${L2V_SUBSET_DIR}/200.csv|200"
 )
@@ -33,14 +29,13 @@ NUM_PROC=${NUM_PROC:-4}
 CPUS_PER_TASK=${CPUS_PER_TASK:-4}
 MEM_PER_TASK=${MEM_PER_TASK:-32G}
 TIME_LIMIT=${TIME_LIMIT:-04:00:00}
-MAX_LENGTH=${MAX_LENGTH:-512}
+MAX_LENGTH=${MAX_LENGTH:-1024}
 EVAL_FRACTION=${EVAL_FRACTION:-0.02}
 EVAL_SEED=${EVAL_SEED:-42}
 
 STAGE2_LANGUAGE="english"
-STAGE2_NUM_RANKS=${STAGE2_NUM_RANKS:-25}
-STAGE2_LANGUAGE_RATES_FILE=${STAGE2_LANGUAGE_RATES_FILE:-${MAIN_REPO_ROOT}/configs/moelpr_stage2_language_rates.json}
-STAGE1_NUM_RANKS_OVERRIDE=${STAGE1_NUM_RANKS_OVERRIDE:-25}
+STAGE2_NUM_RANKS=${STAGE2_NUM_RANKS:-}
+STAGE1_NUM_RANKS_OVERRIDE=${STAGE1_NUM_RANKS_OVERRIDE:-}
 
 if [[ ! -x "${PIPELINE_SCRIPT}" ]]; then
   echo "[ERROR] Missing pipeline script at ${PIPELINE_SCRIPT}" >&2
@@ -62,20 +57,25 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       continue
     fi
 
-    stage1_langs=$(awk -F',' 'NR>1 {print $2}' "${subset_csv}" | sort -u | tr '\n' ' ')
+    stage1_langs=$(awk -F',' 'NR>1 {print $2}' "${subset_csv}" | sed 's/^ *//;s/ *$//' | grep -vi '^english$' | sort -u | tr '\n' ' ')
     if [[ -z "${stage1_langs}" ]]; then
       echo "[WARN] No languages found in ${subset_csv}; skipping."
       continue
     fi
 
-    stage1_num_ranks="${STAGE1_NUM_RANKS_OVERRIDE}"
+    if [[ -n "${STAGE1_NUM_RANKS_OVERRIDE}" ]]; then
+      stage1_num_ranks="${STAGE1_NUM_RANKS_OVERRIDE}"
+    else
+      stage1_num_ranks="${subset_size}"
+    fi
 
     stage1_output="${OUTPUT_BASE}/${tok_slug}/${subset_slug}/stage1_newlangs"
     stage2_output="${OUTPUT_BASE}/${tok_slug}/${subset_slug}/stage2_${STAGE2_LANGUAGE}"
     stage1_job="moelpr_${tok_slug}_${subset_slug}_stage1"
     stage2_job="moelpr_${tok_slug}_${subset_slug}_stage2"
 
-    stage1_rates="${LANGUAGE_RATES_DIR}/${tok_slug}/${subset_slug}.json"
+    stage1_rates="${LANGUAGE_RATES_DIR}/${tok_slug}/${subset_slug}_stage1.json"
+    stage2_rates="${LANGUAGE_RATES_DIR}/${tok_slug}/${subset_slug}_stage2_english.json"
 
     echo "[INFO] Stage 1 ${tok_slug}/${subset_slug}: ${stage1_langs}"
     stage1_cmd=(
@@ -97,16 +97,21 @@ for tok_entry in "${TOKENIZERS[@]}"; do
     if [[ -f "${stage1_rates}" ]]; then
       stage1_cmd+=(--language-rates "${stage1_rates}")
     else
-      echo "[WARN] Missing stage1 rates: ${stage1_rates} (using full data for stage1)."
+      echo "[ERROR] Missing stage1 rates: ${stage1_rates}" >&2
+      exit 1
     fi
     "${stage1_cmd[@]}"
 
     echo "[INFO] Stage 2 ${tok_slug}/${subset_slug}: ${STAGE2_LANGUAGE}"
-    if [[ ! -f "${STAGE2_LANGUAGE_RATES_FILE}" ]]; then
-      echo "[ERROR] Missing stage2 rates file ${STAGE2_LANGUAGE_RATES_FILE}" >&2
+    if [[ ! -f "${stage2_rates}" ]]; then
+      echo "[ERROR] Missing stage2 rates file ${stage2_rates}" >&2
       exit 1
     fi
-    stage2_num_ranks="${STAGE2_NUM_RANKS}"
+    if [[ -n "${STAGE2_NUM_RANKS}" ]]; then
+      stage2_num_ranks="${STAGE2_NUM_RANKS}"
+    else
+      stage2_num_ranks="${subset_size}"
+    fi
     bash "${PIPELINE_SCRIPT}" \
       --shard-dir "${SHARD_DIR}" \
       --tokenizer "${tok_path}" \
@@ -121,7 +126,7 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --max-length "${MAX_LENGTH}" \
       --eval-fraction "${EVAL_FRACTION}" \
       --eval-seed "${EVAL_SEED}" \
-      --language-rates "${STAGE2_LANGUAGE_RATES_FILE}"
+      --language-rates "${stage2_rates}"
   done
 done
 

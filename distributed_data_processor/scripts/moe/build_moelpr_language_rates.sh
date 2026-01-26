@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 
-ROOT="${ROOT:-${REPO_ROOT}}"
+ROOT="${ROOT:-/scratch/hpc-prf-merlin/nikit/repos/moe-study}"
 SUBSET_DIR="${SUBSET_DIR:-${ROOT}/data_dir/fineweb2_metadata/l2v_nested_samples}"
 COUNTS="${COUNTS:-${ROOT}/data_dir/fw_l2v_samples/lang_counts/language_sample_counts.tsv}"
 OUT_DIR="${OUT_DIR:-${ROOT}/data_dir/fw_l2v_samples/lang_counts/language_rates/moelpr}"
