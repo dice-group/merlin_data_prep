@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
+"""
+Usage example:
+python3 lang_stats.py \
+  --path /scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison/llama-3.2-1B_tokenizer/200_langs \
+  --out lang_stats.csv \
+  --lang-col language \
+  --num-proc 32
+"""
 import argparse
 import json
 import os
+from pathlib import Path
 from collections import Counter
 from multiprocessing import Pool
 
