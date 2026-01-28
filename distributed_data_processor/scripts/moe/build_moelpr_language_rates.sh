@@ -9,7 +9,7 @@ SUBSET_DIR="${SUBSET_DIR:-${ROOT}/data_dir/fineweb2_metadata/l2v_nested_samples}
 COUNTS="${COUNTS:-${ROOT}/data_dir/fw_l2v_samples/lang_counts/language_sample_counts.tsv}"
 OUT_DIR="${OUT_DIR:-${ROOT}/data_dir/fw_l2v_samples/lang_counts/language_rates/moelpr}"
 PY_SCRIPT="${SCRIPT_DIR}/build_language_rates_from_examples.py"
-STAGE2_FRACTION="${STAGE2_FRACTION:-0.6}"
+STAGE2_FRACTION="${STAGE2_FRACTION:-0.006}"
 
 SUBSETS_DEFAULT=(
   "10_langs|10.csv|10"
