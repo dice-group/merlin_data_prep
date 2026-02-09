@@ -38,6 +38,7 @@ TOPK_CPUS=8
 TOPK_MEM=64G
 TOPK_TIME=02:00:00
 LANGUAGE_RATES_DIR="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates"
+LANGUAGE_MAP_DIR=""
 
 usage() {
   cat <<EOF
@@ -75,6 +76,7 @@ Options (propagated to tokenize_and_merge_pipeline.sh):
   --topk-mem STR        Memory for the top-K filtering job (default: ${TOPK_MEM}).
   --topk-time HH:MM:SS  Time for the top-K filtering job (default: ${TOPK_TIME}).
   --job-prefix STR      Prefix for SBATCH job names (default derived per combo).
+  --language-map-dir PATH  Optional dir with per-subset language maps (expects <subset_slug>.json).
   -h, --help            Show this help message.
 EOF
 }
@@ -114,6 +116,7 @@ while [[ $# -gt 0 ]]; do
     --topk-cpus) TOPK_CPUS="$2"; shift 2 ;;
     --topk-mem) TOPK_MEM="$2"; shift 2 ;;
     --topk-time) TOPK_TIME="$2"; shift 2 ;;
+    --language-map-dir) LANGUAGE_MAP_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -192,6 +195,15 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       pipeline_cmd+=("${languages_arg[@]}")
     else
       pipeline_cmd+=(--language-subset "${subset_flag}")
+    fi
+
+    if [[ -n "${LANGUAGE_MAP_DIR}" ]]; then
+      map_file="${LANGUAGE_MAP_DIR}/${subset_dir}.json"
+      if [[ -f "${map_file}" ]]; then
+        pipeline_cmd+=(--language-map "${map_file}")
+      else
+        echo "[warn] No language map file: ${map_file} (language_ids/family_ids may be padded)"
+      fi
     fi
 
     rate_file="${LANGUAGE_RATES_DIR}/${tok_dir}/${subset_dir}.json"

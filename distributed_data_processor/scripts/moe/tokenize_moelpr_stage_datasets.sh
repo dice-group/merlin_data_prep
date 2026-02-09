@@ -11,6 +11,8 @@ SHARD_DIR=${SHARD_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw
 L2V_SUBSET_DIR=${L2V_SUBSET_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fineweb2_metadata/l2v_nested_samples}
 LANGUAGE_RATES_DIR=${LANGUAGE_RATES_DIR:-/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates/moelpr}
 OUTPUT_BASE=${OUTPUT_BASE:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison/moelpr}
+LANGUAGE_MAP_DIR=${LANGUAGE_MAP_DIR:-}
+REQUIRE_LANGUAGE_MAP=${REQUIRE_LANGUAGE_MAP:-1}
 
 LOCAL_MODEL_DIR=${LOCAL_MODEL_DIR:-/scratch/hpc-prf-merlin/joel/moe-study/data_prep/merlin_data_prep/distributed_data_processor/scripts/.model}
 TOKENIZERS=(
@@ -76,6 +78,19 @@ for tok_entry in "${TOKENIZERS[@]}"; do
 
     stage1_rates="${LANGUAGE_RATES_DIR}/${tok_slug}/${subset_slug}_stage1.json"
     stage2_rates="${LANGUAGE_RATES_DIR}/${tok_slug}/${subset_slug}_stage2_english.json"
+    language_map_file=""
+    if [[ -n "${LANGUAGE_MAP_DIR}" ]]; then
+      language_map_file="${LANGUAGE_MAP_DIR}/${subset_slug}.json"
+    fi
+    if [[ "${REQUIRE_LANGUAGE_MAP}" == "1" ]]; then
+      if [[ -z "${language_map_file}" || ! -f "${language_map_file}" ]]; then
+        echo "[ERROR] Missing language map for ${subset_slug}. Set LANGUAGE_MAP_DIR with ${subset_slug}.json." >&2
+        exit 1
+      fi
+    elif [[ -n "${language_map_file}" && ! -f "${language_map_file}" ]]; then
+      echo "[WARN] language map not found: ${language_map_file} (language_ids/family_ids may be padded)"
+      language_map_file=""
+    fi
 
     echo "[INFO] Stage 1 ${tok_slug}/${subset_slug}: ${stage1_langs}"
     stage1_cmd=(
@@ -94,6 +109,9 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --eval-fraction "${EVAL_FRACTION}"
       --eval-seed "${EVAL_SEED}"
     )
+    if [[ -n "${language_map_file}" ]]; then
+      stage1_cmd+=(--language-map "${language_map_file}")
+    fi
     if [[ -f "${stage1_rates}" ]]; then
       stage1_cmd+=(--language-rates "${stage1_rates}")
     else
@@ -112,21 +130,27 @@ for tok_entry in "${TOKENIZERS[@]}"; do
     else
       stage2_num_ranks="${subset_size}"
     fi
-    bash "${PIPELINE_SCRIPT}" \
-      --shard-dir "${SHARD_DIR}" \
-      --tokenizer "${tok_path}" \
-      --output-root "${stage2_output}" \
-      --languages "${STAGE2_LANGUAGE}" \
-      --job-prefix "${stage2_job}" \
-      --num-proc "${NUM_PROC}" \
-      --num-ranks "${stage2_num_ranks}" \
-      --cpus-per-task "${CPUS_PER_TASK}" \
-      --mem "${MEM_PER_TASK}" \
-      --time "${TIME_LIMIT}" \
-      --max-length "${MAX_LENGTH}" \
-      --eval-fraction "${EVAL_FRACTION}" \
-      --eval-seed "${EVAL_SEED}" \
+    stage2_cmd=(
+      "${PIPELINE_SCRIPT}"
+      --shard-dir "${SHARD_DIR}"
+      --tokenizer "${tok_path}"
+      --output-root "${stage2_output}"
+      --languages "${STAGE2_LANGUAGE}"
+      --job-prefix "${stage2_job}"
+      --num-proc "${NUM_PROC}"
+      --num-ranks "${stage2_num_ranks}"
+      --cpus-per-task "${CPUS_PER_TASK}"
+      --mem "${MEM_PER_TASK}"
+      --time "${TIME_LIMIT}"
+      --max-length "${MAX_LENGTH}"
+      --eval-fraction "${EVAL_FRACTION}"
+      --eval-seed "${EVAL_SEED}"
       --language-rates "${stage2_rates}"
+    )
+    if [[ -n "${language_map_file}" ]]; then
+      stage2_cmd+=(--language-map "${language_map_file}")
+    fi
+    "${stage2_cmd[@]}"
   done
 done
 

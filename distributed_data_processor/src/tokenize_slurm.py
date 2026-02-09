@@ -232,9 +232,24 @@ def _language_id_columns(
     return language_ids, family_ids
 
 
-def tokenize_fn(batch, tokenizer, keep_text: bool, language_metadata: LanguageMetadata, max_length: int):
+def tokenize_fn(
+    batch,
+    tokenizer,
+    keep_text: bool,
+    language_metadata: LanguageMetadata,
+    max_length: int,
+    mask_pad_labels: bool,
+):
     tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=max_length)
-    tokenized["labels"] = tokenized["input_ids"].copy()
+    if mask_pad_labels:
+        # Ensure padded tokens do not contribute to LM loss.
+        labels = []
+        for input_ids, attention_mask in zip(tokenized["input_ids"], tokenized["attention_mask"]):
+            labels.append([tok if mask == 1 else -100 for tok, mask in zip(input_ids, attention_mask)])
+        tokenized["labels"] = labels
+    else:
+        # Legacy behavior kept for controlled ablations.
+        tokenized["labels"] = tokenized["input_ids"].copy()
     languages = batch.get("language")
     if languages is None:
         languages = [None] * len(batch["text"])
@@ -325,7 +340,14 @@ def main(args):
         keep_text = bool(args.keep_text)
         remove_columns = None if keep_text else ["text"]
         tokenized_dataset = raw_dataset.map(
-            lambda batch: tokenize_fn(batch, tokenizer, keep_text, language_metadata, args.max_length),
+            lambda batch: tokenize_fn(
+                batch,
+                tokenizer,
+                keep_text,
+                language_metadata,
+                args.max_length,
+                args.mask_pad_labels,
+            ),
             batched=True,
             remove_columns=remove_columns,
             num_proc=args.num_proc,
@@ -366,5 +388,11 @@ if __name__ == "__main__":
     parser.add_argument("--max_samples", type=int, default=None, help="Optional max number of records to emit per rank.")
     parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length for tokenization.")
     parser.add_argument("--language-map", type=str, default=None, help="Optional path or JSON string mapping languages to families.")
+    parser.add_argument(
+        "--mask_pad_labels",
+        type=lambda x: str(x).lower() in {"1", "true", "yes", "y"},
+        default=True,
+        help="Mask padded label positions to -100 (true) or keep legacy labels (false).",
+    )
     args = parser.parse_args()
     main(args)
