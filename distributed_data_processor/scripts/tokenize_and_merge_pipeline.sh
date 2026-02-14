@@ -22,6 +22,7 @@ MAX_SAMPLES=""
 SAMPLE_FRACTION=1.0
 SAMPLE_SEED=0
 LANGUAGE_RATES_FILE=""
+MASK_PAD_LABELS="true"
 RANKING_ENABLED=0
 RANK_ALPHA=0.5
 RANK_BETA=0.5
@@ -55,6 +56,7 @@ Key options:
   --sample-seed INT         Seed used for the sampling hash (default: ${SAMPLE_SEED}).
   --max-length INT          Maximum sequence length for tokenization (default: ${MAX_LENGTH}).
   --language-rates PATH     JSON mapping of language->keep_rate overriding the global sample fraction.
+  --mask-pad-labels BOOL    Whether to set padded labels to -100 (default: ${MASK_PAD_LABELS}).
   --enable-ranking          Run word/subword counting + joint-score computation before merge.
   --rank-alpha FLOAT        Weight for local popularity Rl (default: ${RANK_ALPHA}).
   --rank-beta FLOAT         Weight for global importance Rg (default: ${RANK_BETA}).
@@ -104,6 +106,7 @@ while [[ $# -gt 0 ]]; do
     --sample-seed) SAMPLE_SEED="$2"; shift 2 ;;
     --max-length) MAX_LENGTH="$2"; shift 2 ;;
     --language-rates) LANGUAGE_RATES_FILE="$2"; shift 2 ;;
+    --mask-pad-labels) MASK_PAD_LABELS="$2"; shift 2 ;;
     --max-samples) MAX_SAMPLES="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
     --enable-ranking) RANKING_ENABLED=1; shift ;;
@@ -207,6 +210,7 @@ mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
 
 printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q --eval_fraction %q --eval_seed %q --sample_fraction %q --sample_seed %q --max_length %q' \
   "${CORE_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}" "${SAMPLE_FRACTION}" "${SAMPLE_SEED}" "${MAX_LENGTH}"
+TOKEN_CMD+=" --mask_pad_labels ${MASK_PAD_LABELS}"
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   printf -v TOKEN_CMD '%s --language_subset %q' "${TOKEN_CMD}" "${LANGUAGE_SUBSET}"

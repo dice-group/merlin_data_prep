@@ -37,18 +37,22 @@ TOPK_MIN_LANGUAGE_SIZE=30000
 TOPK_CPUS=8
 TOPK_MEM=64G
 TOPK_TIME=02:00:00
+MASK_PAD_LABELS="true"
 LANGUAGE_RATES_DIR="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates"
+LANGUAGE_RATES_FILE="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/lang_counts/language_rates/llama-3.2-1B_10langs_4b.json"
 LANGUAGE_MAP_DIR=""
 
 usage() {
   cat <<EOF
-Usage: $0 --shard-dir PATH --output-base PATH [options]
+Usage: $0 [options]
 
-Required arguments:
-  --shard-dir PATH      Root directory that holds per-language shard folders.
-  --output-base PATH    Base directory for outputs (e.g., /scratch/.../hierarchical_adapter).
+Defaults:
+  shard dir:            /scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/sharded_samples
+  output base:          /scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison_labeled
 
 Options (propagated to tokenize_and_merge_pipeline.sh):
+  --shard-dir PATH      Root directory that holds per-language shard folders.
+  --output-base PATH    Base directory for outputs.
   --num-ranks INT       Number of SLURM array tasks/ranks (default: ${NUM_RANKS}).
   --num-proc INT        --num_proc for tokenize_slurm.py (default: ${NUM_PROC}).
   --cpus-per-task INT   CPUs per tokenization task (default: ${CPUS_PER_TASK}).
@@ -76,14 +80,20 @@ Options (propagated to tokenize_and_merge_pipeline.sh):
   --topk-mem STR        Memory for the top-K filtering job (default: ${TOPK_MEM}).
   --topk-time HH:MM:SS  Time for the top-K filtering job (default: ${TOPK_TIME}).
   --job-prefix STR      Prefix for SBATCH job names (default derived per combo).
+  --mask-pad-labels BOOL  Set padded labels to -100 in tokenization (default: ${MASK_PAD_LABELS}).
+  --language-rates-file PATH  Explicit rates JSON to use for all selected runs.
+  --tokenizer-filter SLUG  Restrict to one tokenizer slug (e.g., llama-3.2-1B_tokenizer).
+  --subset-filter SLUG     Restrict to one subset slug (e.g., 10_langs).
   --language-map-dir PATH  Optional dir with per-subset language maps (expects <subset_slug>.json).
   -h, --help            Show this help message.
 EOF
 }
 
-SHARD_DIR=""
-OUTPUT_BASE=""
+SHARD_DIR="/scratch/hpc-prf-merlin/nikit/repos/moe-study/data_dir/fw_l2v_samples/sharded_samples"
+OUTPUT_BASE="/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/fw_l2v_samples_moe_study_comparison_labeled"
 JOB_PREFIX_BASE="bulk_tok"
+TOKENIZER_FILTER="llama-3.2-1B_tokenizer"
+SUBSET_FILTER="10_langs"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -116,17 +126,15 @@ while [[ $# -gt 0 ]]; do
     --topk-cpus) TOPK_CPUS="$2"; shift 2 ;;
     --topk-mem) TOPK_MEM="$2"; shift 2 ;;
     --topk-time) TOPK_TIME="$2"; shift 2 ;;
+    --mask-pad-labels) MASK_PAD_LABELS="$2"; shift 2 ;;
+    --language-rates-file) LANGUAGE_RATES_FILE="$2"; shift 2 ;;
+    --tokenizer-filter) TOKENIZER_FILTER="$2"; shift 2 ;;
+    --subset-filter) SUBSET_FILTER="$2"; shift 2 ;;
     --language-map-dir) LANGUAGE_MAP_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
-
-if [[ -z "${SHARD_DIR}" || -z "${OUTPUT_BASE}" ]]; then
-  echo "Missing required arguments." >&2
-  usage
-  exit 1
-fi
 
 LOCAL_MODEL_DIR="/scratch/hpc-prf-merlin/joel/moe-study/data_prep/merlin_data_prep/distributed_data_processor/scripts/.model"
 TOKENIZERS=(
@@ -147,8 +155,14 @@ SUBSETS=(
 
 for tok_entry in "${TOKENIZERS[@]}"; do
   IFS='|' read -r tok_dir tok_name <<<"${tok_entry}"
+  if [[ -n "${TOKENIZER_FILTER}" && "${tok_dir}" != "${TOKENIZER_FILTER}" ]]; then
+    continue
+  fi
   for subset_entry in "${SUBSETS[@]}"; do
     IFS='|' read -r subset_dir subset_flag <<<"${subset_entry}"
+    if [[ -n "${SUBSET_FILTER}" && "${subset_dir}" != "${SUBSET_FILTER}" ]]; then
+      continue
+    fi
     run_num_ranks="${NUM_RANKS}"
     if [[ -z "${USER_NUM_RANKS}" ]]; then
       case "${subset_dir}" in
@@ -187,6 +201,7 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --merge-time "${MERGE_TIME}"
       --eval-fraction "${EVAL_FRACTION}"
       --eval-seed "${EVAL_SEED}"
+      --mask-pad-labels "${MASK_PAD_LABELS}"
       --job-prefix "${job_prefix}"
       --output-root "${output_dir}"
     )
@@ -206,11 +221,20 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       fi
     fi
 
-    rate_file="${LANGUAGE_RATES_DIR}/${tok_dir}/${subset_dir}.json"
-    if [[ -f "${rate_file}" ]]; then
-      pipeline_cmd+=(--language-rates "${rate_file}")
+    if [[ -n "${LANGUAGE_RATES_FILE}" ]]; then
+      if [[ -f "${LANGUAGE_RATES_FILE}" ]]; then
+        pipeline_cmd+=(--language-rates "${LANGUAGE_RATES_FILE}")
+      else
+        echo "[ERROR] Explicit language rates file missing: ${LANGUAGE_RATES_FILE}" >&2
+        exit 1
+      fi
     else
-      echo "[warn] No language rates file: ${rate_file} (using full data)"
+      rate_file="${LANGUAGE_RATES_DIR}/${tok_dir}/${subset_dir}.json"
+      if [[ -f "${rate_file}" ]]; then
+        pipeline_cmd+=(--language-rates "${rate_file}")
+      else
+        echo "[warn] No language rates file: ${rate_file} (using full data)"
+      fi
     fi
 
     if [[ "${ENABLE_RANKING}" -eq 1 ]]; then
