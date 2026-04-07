@@ -22,7 +22,16 @@ def verify_tokenized_dataset(dataset: Dataset, *, require_language_metadata: boo
         require_language_metadata: If True, at least one row must carry non-pad `language_ids`.
         sample_size: How many rows to peek at for the metadata check.
     """
-    required_columns = {"input_ids", "attention_mask", "labels", "language_ids", "family_ids"}
+    required_columns = {
+        "input_ids",
+        "attention_mask",
+        "labels",
+        "language_ids",
+        "family_ids",
+        "doc_id",
+        "chunk_idx",
+        "doc_token_count",
+    }
     missing = required_columns - set(dataset.column_names)
     if missing:
         raise ValidationError(f"Missing columns: {', '.join(sorted(missing))}")
@@ -43,5 +52,12 @@ def verify_tokenized_dataset(dataset: Dataset, *, require_language_metadata: boo
 
     if require_language_metadata and not _has_nonpad_ids(family_ids):
         raise ValidationError("All `family_ids` values are pads; metadata is missing.")
+
+    chunk_idxs = sample["chunk_idx"]
+    doc_token_counts = sample["doc_token_count"]
+    if any(int(idx) < 0 for idx in chunk_idxs):
+        raise ValidationError("`chunk_idx` contains negative values.")
+    if any(int(count) <= 0 for count in doc_token_counts):
+        raise ValidationError("`doc_token_count` contains non-positive values.")
 
     print(f"[validation] dataset OK ({dataset.num_rows} rows, sample_size={rows}).")

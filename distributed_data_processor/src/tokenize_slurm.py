@@ -169,14 +169,15 @@ def _iter_shard_lines(
     for language, shard_path, keep_rate in shards:
         opener = gzip.open if shard_path.suffix == ".gz" else open
         with opener(shard_path, "rt", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
+            for line_idx, line in enumerate(handle):
                 if max_samples is not None and emitted >= max_samples:
                     return
                 text = _extract_text(line)
                 if text is not None:
                     if keep_rate < 1.0 and not _should_keep_sample(language, text, keep_rate, sample_seed):
                         continue
-                    record = {"text": text, "language": language}
+                    doc_id = _document_id(language, shard_path, line_idx, text)
+                    record = {"text": text, "language": language, "doc_id": doc_id}
                     if eval_fraction > 0:
                         record["split"] = (
                             "validation"
@@ -185,6 +186,11 @@ def _iter_shard_lines(
                         )
                     yield record
                     emitted += 1
+
+
+def _document_id(language: str, shard_path: Path, line_idx: int, text: str) -> str:
+    key = f"{language}\u0000{shard_path}\u0000{line_idx}\u0000{text}".encode("utf-8", errors="ignore")
+    return hashlib.sha256(key).hexdigest()
 
 
 def _extract_text(line: str) -> Optional[str]:
@@ -240,7 +246,14 @@ def tokenize_fn(
     max_length: int,
     mask_pad_labels: bool,
 ):
-    tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=max_length)
+    tokenized = tokenizer(
+        batch["text"],
+        truncation=True,
+        padding=True,
+        max_length=max_length,
+        return_overflowing_tokens=True,
+    )
+    sample_mapping = tokenized.pop("overflow_to_sample_mapping", list(range(len(batch["text"]))))
     if mask_pad_labels:
         # Ensure padded tokens do not contribute to LM loss.
         labels = []
@@ -253,11 +266,29 @@ def tokenize_fn(
     languages = batch.get("language")
     if languages is None:
         languages = [None] * len(batch["text"])
-    language_ids, family_ids = _language_id_columns(languages, language_metadata)
+    chunk_languages = [languages[idx] for idx in sample_mapping]
+    language_ids, family_ids = _language_id_columns(chunk_languages, language_metadata)
+    for column in ("language", "split", "doc_id"):
+        values = batch.get(column)
+        if values is not None:
+            tokenized[column] = [values[idx] for idx in sample_mapping]
+    chunk_counts: Dict[int, int] = {}
+    chunk_idx = []
+    for idx in sample_mapping:
+        current = chunk_counts.get(idx, 0)
+        chunk_idx.append(current)
+        chunk_counts[idx] = current + 1
+    doc_token_totals = {
+        idx: 0 for idx in chunk_counts
+    }
+    for idx, attention_mask in zip(sample_mapping, tokenized["attention_mask"]):
+        doc_token_totals[idx] += int(sum(attention_mask))
+    tokenized["chunk_idx"] = chunk_idx
+    tokenized["doc_token_count"] = [doc_token_totals[idx] for idx in sample_mapping]
     tokenized["language_ids"] = language_ids
     tokenized["family_ids"] = family_ids
     if keep_text:
-        tokenized["text"] = batch["text"]
+        tokenized["text"] = [batch["text"][idx] for idx in sample_mapping]
     return tokenized
 
 
