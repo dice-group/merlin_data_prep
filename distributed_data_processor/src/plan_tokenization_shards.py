@@ -86,8 +86,11 @@ def _validation_targets(selected_targets: Dict[str, int], eval_fraction: float) 
         if selected_docs <= 0 or eval_fraction <= 0.0:
             val_targets[language] = 0
             continue
+        if selected_docs == 1:
+            val_targets[language] = 0
+            continue
         target = int(round(selected_docs * eval_fraction))
-        val_targets[language] = min(selected_docs, max(1, target))
+        val_targets[language] = min(selected_docs - 1, max(1, target))
     return val_targets
 
 
