@@ -287,7 +287,7 @@ def tokenize_fn(
         languages = [None] * len(batch["text"])
     chunk_languages = [languages[idx] for idx in sample_mapping]
     language_ids, family_ids = _language_id_columns(chunk_languages, language_metadata)
-    for column in ("language", "split", "doc_id"):
+    for column in ("language", "split", "doc_id", "language_loss_weight"):
         values = batch.get(column)
         if values is not None:
             tokenized[column] = [values[idx] for idx in sample_mapping]
